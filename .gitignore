@@ -1,0 +1,43 @@
+# === Fordítás során keletkező fájlok ===
+# Az összes kiterjesztés nélküli fájl (Linux/macOS futtathatók)
+# Ha konkrét neveid vannak, azokat is beírhatod:
+info
+hello
+vector_add
+fill_missing
+rank_calc
+
+# Windows futtathatók
+*.exe
+*.debug
+*.pdb
+
+# Objektum fájlok és statikus könyvtárak
+*.o
+*.obj
+*.a
+*.lib
+
+# Dinamikus könyvtárak
+*.so
+*.dll
+*.dylib
+
+# === IDE és Szerkesztő fájlok ===
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# === Build mappák ===
+build/
+bin/
+out/
+Debug/
+Release/
+
+# === OpenCL specifikus ===
+# Néhány driver ideiglenes binárisokat készíthet a kernelekből
+*.cl.bin
+*.cl.meta
