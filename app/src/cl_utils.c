@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 const char* cl_error_to_string(cl_int error_code)
 {
@@ -231,10 +232,11 @@ cl_device_id select_best_gpu_device(void)
                 "clGetDeviceInfo(CL_DEVICE_GLOBAL_MEM_SIZE)"
             );
 
-            score = (cl_ulong)compute_units * (cl_ulong)clock_frequency + (global_mem_size / (1024ULL * 1024ULL));
+            score = (cl_ulong)compute_units * (cl_ulong)clock_frequency
+                  + (global_mem_size / (1024UL * 1024UL));
 
             printf("  Selection score   : %lu\n\n", (unsigned long)score);
-            
+
             if (score > best_score) {
                 best_score = score;
                 best_device = devices[d];
@@ -253,4 +255,30 @@ cl_device_id select_best_gpu_device(void)
 
     printf("Selected best available GPU device.\n\n");
     return best_device;
+}
+
+void print_program_build_log(cl_program program, cl_device_id device)
+{
+    cl_int error_code;
+    size_t log_size = 0;
+    char* build_log = NULL;
+
+    error_code = clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+    check_cl_error(error_code, "clGetProgramBuildInfo(size)");
+
+    build_log = (char*)malloc(log_size + 1);
+    if (build_log == NULL) {
+        fprintf(stderr, "Failed to allocate memory for build log.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    error_code = clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, log_size, build_log, NULL);
+    check_cl_error(error_code, "clGetProgramBuildInfo(log)");
+
+    build_log[log_size] = '\0';
+
+    printf("=== OpenCL Build Log ===\n");
+    printf("%s\n", build_log);
+
+    free(build_log);
 }
