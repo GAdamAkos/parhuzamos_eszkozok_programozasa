@@ -29,6 +29,9 @@ int main(void)
     cl_event kernel_event;
 
     size_t i;
+    cl_int min_value;
+    cl_int max_value;
+    long long sum_values = 0;
 
     printf("=== Mandelbrot OpenCL Host Initialization ===\n");
     printf("Image dimensions: Width = %d, M = %d\n\n", Width, M);
@@ -134,11 +137,29 @@ int main(void)
     check_cl_error(error_code, "clEnqueueReadBuffer");
 
     printf("Kernel executed successfully.\n");
-    printf("First 10 output values:\n");
 
+    min_value = host_output[0];
+    max_value = host_output[0];
+
+    for (i = 0; i < element_count; ++i) {
+        if (host_output[i] < min_value) {
+            min_value = host_output[i];
+        }
+        if (host_output[i] > max_value) {
+            max_value = host_output[i];
+        }
+        sum_values += host_output[i];
+    }
+
+    printf("First 10 output values:\n");
     for (i = 0; i < 10 && i < element_count; ++i) {
         printf("  output[%lu] = %d\n", (unsigned long)i, host_output[i]);
     }
+
+    printf("\nOutput statistics:\n");
+    printf("  Min iteration value : %d\n", min_value);
+    printf("  Max iteration value : %d\n", max_value);
+    printf("  Average value       : %.2f\n", (double)sum_values / (double)element_count);
 
     clReleaseEvent(kernel_event);
     free(host_output);
@@ -149,6 +170,6 @@ int main(void)
     clReleaseCommandQueue(command_queue);
     clReleaseContext(context);
 
-    printf("\nBuffer allocation, kernel execution, and readback finished successfully.\n");
+    printf("\nMandelbrot computation finished successfully.\n");
     return 0;
 }
