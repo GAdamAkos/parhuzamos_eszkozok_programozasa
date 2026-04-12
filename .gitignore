@@ -41,3 +41,7 @@ Release/
 # Néhány driver ideiglenes binárisokat készíthet a kernelekből
 *.cl.bin
 *.cl.meta
+
+# === Generált képkimenetek ===
+output/*
+!output/.gitkeep

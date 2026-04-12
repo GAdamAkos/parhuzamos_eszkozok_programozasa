@@ -3,11 +3,13 @@
 
 #include "cl_utils.h"
 #include "kernel_loader.h"
+#include "image_writer.h"
 
 int main(void)
 {
     const int Width = 1920;
     const int M = 1080;
+    const int max_iterations = 1000;
     const size_t element_count = (size_t)Width * (size_t)M;
     const size_t output_size = element_count * sizeof(cl_int);
 
@@ -30,7 +32,7 @@ int main(void)
 
     size_t i;
     cl_int min_value;
-    cl_int max_value;
+    cl_int max_value_found;
     long long sum_values = 0;
 
     printf("=== Mandelbrot OpenCL Host Initialization ===\n");
@@ -139,14 +141,14 @@ int main(void)
     printf("Kernel executed successfully.\n");
 
     min_value = host_output[0];
-    max_value = host_output[0];
+    max_value_found = host_output[0];
 
     for (i = 0; i < element_count; ++i) {
         if (host_output[i] < min_value) {
             min_value = host_output[i];
         }
-        if (host_output[i] > max_value) {
-            max_value = host_output[i];
+        if (host_output[i] > max_value_found) {
+            max_value_found = host_output[i];
         }
         sum_values += host_output[i];
     }
@@ -158,8 +160,24 @@ int main(void)
 
     printf("\nOutput statistics:\n");
     printf("  Min iteration value : %d\n", min_value);
-    printf("  Max iteration value : %d\n", max_value);
+    printf("  Max iteration value : %d\n", max_value_found);
     printf("  Average value       : %.2f\n", (double)sum_values / (double)element_count);
+
+    if (!save_ppm_image("output/mandelbrot.ppm", host_output, Width, M, max_iterations)) {
+        fprintf(stderr, "Failed to save output image.\n");
+
+        clReleaseEvent(kernel_event);
+        free(host_output);
+        clReleaseMemObject(output_buffer);
+        clReleaseKernel(kernel);
+        clReleaseProgram(program);
+        free(kernel_source);
+        clReleaseCommandQueue(command_queue);
+        clReleaseContext(context);
+        return EXIT_FAILURE;
+    }
+
+    printf("Image saved successfully: output/mandelbrot.ppm\n");
 
     clReleaseEvent(kernel_event);
     free(host_output);
@@ -170,6 +188,6 @@ int main(void)
     clReleaseCommandQueue(command_queue);
     clReleaseContext(context);
 
-    printf("\nMandelbrot computation finished successfully.\n");
+    printf("\nMandelbrot computation and image export finished successfully.\n");
     return 0;
 }
