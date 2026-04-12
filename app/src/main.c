@@ -8,6 +8,8 @@ int main(void)
 {
     const int Width = 1920;
     const int M = 1080;
+    const size_t element_count = (size_t)Width * (size_t)M;
+    const size_t output_size = element_count * sizeof(cl_int);
 
     cl_int error_code;
     cl_device_id device;
@@ -19,6 +21,14 @@ int main(void)
 
     cl_program program;
     cl_kernel kernel;
+    cl_mem output_buffer = NULL;
+
+    cl_int* host_output = NULL;
+
+    size_t global_work_size[2];
+    cl_event kernel_event;
+
+    size_t i;
 
     printf("=== Mandelbrot OpenCL Host Initialization ===\n");
     printf("Image dimensions: Width = %d, M = %d\n\n", Width, M);
@@ -66,12 +76,79 @@ int main(void)
 
     printf("Kernel created successfully.\n");
 
+    output_buffer = clCreateBuffer(context, CL_MEM_WRITE_ONLY, output_size, NULL, &error_code);
+    check_cl_error(error_code, "clCreateBuffer");
+
+    host_output = (cl_int*)malloc(output_size);
+    if (host_output == NULL) {
+        fprintf(stderr, "Failed to allocate host output buffer.\n");
+
+        clReleaseMemObject(output_buffer);
+        clReleaseKernel(kernel);
+        clReleaseProgram(program);
+        free(kernel_source);
+        clReleaseCommandQueue(command_queue);
+        clReleaseContext(context);
+        return EXIT_FAILURE;
+    }
+
+    error_code = clSetKernelArg(kernel, 0, sizeof(cl_mem), &output_buffer);
+    check_cl_error(error_code, "clSetKernelArg(output_buffer)");
+
+    error_code = clSetKernelArg(kernel, 1, sizeof(cl_int), &Width);
+    check_cl_error(error_code, "clSetKernelArg(Width)");
+
+    error_code = clSetKernelArg(kernel, 2, sizeof(cl_int), &M);
+    check_cl_error(error_code, "clSetKernelArg(M)");
+
+    global_work_size[0] = (size_t)Width;
+    global_work_size[1] = (size_t)M;
+
+    error_code = clEnqueueNDRangeKernel(
+        command_queue,
+        kernel,
+        2,
+        NULL,
+        global_work_size,
+        NULL,
+        0,
+        NULL,
+        &kernel_event
+    );
+    check_cl_error(error_code, "clEnqueueNDRangeKernel");
+
+    error_code = clWaitForEvents(1, &kernel_event);
+    check_cl_error(error_code, "clWaitForEvents");
+
+    error_code = clEnqueueReadBuffer(
+        command_queue,
+        output_buffer,
+        CL_TRUE,
+        0,
+        output_size,
+        host_output,
+        0,
+        NULL,
+        NULL
+    );
+    check_cl_error(error_code, "clEnqueueReadBuffer");
+
+    printf("Kernel executed successfully.\n");
+    printf("First 10 output values:\n");
+
+    for (i = 0; i < 10 && i < element_count; ++i) {
+        printf("  output[%lu] = %d\n", (unsigned long)i, host_output[i]);
+    }
+
+    clReleaseEvent(kernel_event);
+    free(host_output);
+    clReleaseMemObject(output_buffer);
     clReleaseKernel(kernel);
     clReleaseProgram(program);
     free(kernel_source);
     clReleaseCommandQueue(command_queue);
     clReleaseContext(context);
 
-    printf("Initialization and kernel setup finished successfully.\n");
+    printf("\nBuffer allocation, kernel execution, and readback finished successfully.\n");
     return 0;
 }
