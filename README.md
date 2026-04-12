@@ -4,20 +4,18 @@
 
 A projekt célja egy Mandelbrot-halmazt megjelenítő program készítése C nyelven, OpenCL használatával.
 
-A program egy 2 dimenziós képrács minden pontjához hozzárendel egy komplex számot, majd kiszámítja, hogy az adott ponthoz tartozó iterációs sorozat konvergál-e vagy divergenssé válik. Az eredmény alapján a program kirajzolja a Mandelbrot-halmaz képét.
+A program egy 2 dimenziós képrács pontjaihoz komplex számokat rendel, majd minden pixelre kiszámítja a Mandelbrot-iterációt. Az eredmény alapján előállítható a Mandelbrot-halmaz képe.
 
-A feladat jól párhuzamosítható, mert az egyes pixelek számítása egymástól függetlenül elvégezhető. Emiatt a program GPU-n futtatott OpenCL kernel segítségével számolja ki a képet.
+A feladat jól párhuzamosítható, mert az egyes pixelek számítása egymástól függetlenül végezhető el, ezért a program GPU-n futtatott OpenCL kernel segítségével dolgozik.
 
 ## A projekt célja
 
 A beadandó célja egy olyan OpenCL-alapú program elkészítése, amely:
 
 - helyesen előállítja a Mandelbrot-halmaz képét
-- a számításokat párhuzamos módon hajtja végre
+- a számítást párhuzamos módon hajtja végre
 - alkalmas futásidő mérések készítésére
-- jól dokumentálható eredményeket ad különböző paraméterek mellett
-
-A projekt nemcsak a helyes működésre, hanem a párhuzamos végrehajtás vizsgálatára is épül.
+- jól dokumentálható eredményeket ad
 
 ## A program működése
 
@@ -27,79 +25,24 @@ Minden pixelhez:
 
 - hozzárendel egy pontot a komplex síkon
 - elvégzi a Mandelbrot-iterációt
-- megszámolja, hogy hány lépés után lépi túl az érték a megadott határt
-- ezt az eredményt eltárolja a kimeneti tömbben
+- meghatározza az escape-time értéket
+- eltárolja az eredményt a kimeneti tömbben
 
 Az iteráció alapja:
 
 `z(n+1) = z(n)^2 + c`
 
-ahol:
-
-- `z` az iterált komplex szám
-- `c` az adott pixelhez tartozó komplex pont
-
-A számítás eredménye az úgynevezett escape-time érték, amely alapján a kép később előállítható.
+A GPU-s megvalósításban egy work-item egy pixel kiszámításáért felel.
 
 ## Miért alkalmas a feladat párhuzamosításra
 
-A Mandelbrot-halmaz generálása tipikus adatpárhuzamos feladat:
+A Mandelbrot-halmaz generálása tipikus adatpárhuzamos feladat, mert:
 
-- minden pixelre ugyanaz a számítási séma fut
+- minden pixelre ugyanaz a számítás fut
 - az egyes pixelek egymástól függetlenek
-- a feladat természetesen felosztható sok szálra
-- a számítási idő jól vizsgálható felbontás és iterációszám szerint
+- a teljesítmény jól vizsgálható felbontás és iterációszám szerint
 
-Ezért a feladat alkalmas GPU-alapú OpenCL megvalósításra és teljesítménymérésre.
-
-## Megvalósítási koncepció
-
-A projekt két fő részből áll:
-
-### Host program C nyelven
-
-A host oldal feladatai:
-
-- OpenCL platformok és eszközök lekérdezése
-- megfelelő GPU kiválasztása
-- context létrehozása
-- command queue létrehozása
-- kernel forrás betöltése
-- program fordítása
-- buffer-ek lefoglalása
-- kernel paraméterezése
-- NDRange futtatás
-- eredmények visszaolvasása
-- futási idők mérése
-
-### Kernel program OpenCL C nyelven
-
-A kernel feladatai:
-
-- az aktuális pixel koordinátáinak meghatározása
-- a pixel leképezése a komplex síkra
-- a Mandelbrot-iteráció végrehajtása
-- az escape-time érték kiszámítása
-- az eredmény kiírása a kimeneti pufferbe
-
-## Mérési lehetőségek
-
-A projekt egyik fontos része a teljesítményvizsgálat.
-
-A program alkalmas lehet az alábbi paraméterek szerinti mérésekre:
-
-- különböző felbontások
-- különböző maximális iterációszámok
-- eltérő globális work size
-- eltérő lokális work-group méretek
-
-A mérések alapján vizsgálható:
-
-- a kernel futási ideje
-- a teljes GPU-s végrehajtási idő
-- a paraméterek hatása a teljesítményre
-- a skálázódás nagyobb problémaméretek esetén
-- összehasonlítás CPU-s megoldással
+Ezért a feladat alkalmas OpenCL-alapú GPU-s megvalósításra és teljesítménymérésre.
 
 ## Technikai jellemzők
 
@@ -107,60 +50,69 @@ A mérések alapján vizsgálható:
 - Párhuzamos API: OpenCL
 - Kernel nyelv: OpenCL C
 - Build rendszer: make
-- Kétdimenziós rács: `Width × M`
+- Rácsméret: `Width × M`
 - Végrehajtás: GPU
 
 ## Projektstruktúra
 
 ```text
-/mandelbrot_opencl
-  /include
-  /src
-  /kernels
-  /output
-  Makefile
+/parhuzamos_eszkozok_programozasa
+  /app
+    /include
+    /src
+    /kernels
+    /output
+    Makefile
 README.md
 ```
 
 ## Belépési pont
 
-`src/main.c`
+`app/src/main.c`
 
 ## Fejlesztési környezet
 
-A projekt a tantárgyhoz kapott C/OpenCL fejlesztői környezetben készül.
+A projekt a tantárgyhoz kapott `c_sdk_220203` fejlesztői környezetben készül.
 
-A fordításhoz szükséges OpenCL fejlécek és könyvtárak a kiadott SDK csomagban találhatók. A fejlesztés során a tantárgyi segédanyagok és a `me-courses` repository OpenCL példái is felhasználhatók referenciaanyagként.
+A fordításhoz szükséges OpenCL fejlécek és könyvtárak a csomagban található `MinGW` mappában érhetők el.
+
+## Elhelyezés
+
+A projektet a `c_sdk_220203` mappán belül ajánlott elhelyezni az alábbi szerkezetben:
+
+```text
+c_sdk_220203/
+  MinGW/
+  parhuzamos/
+    parhuzamos_eszkozok_programozasa/
+      app/
+      README.md
+```
+
+Ez szükséges ahhoz, hogy a `Makefile` a megfelelő include és library útvonalakat használja.
 
 ## Fordítás és futtatás
 
-A projektet a tantárgyhoz kapott fejlesztői környezeten belül ajánlott elhelyezni.
-
-A fordítás a projekt gyökérmappájából történik:
+A fordítást az `app` mappából kell indítani:
 
 ```bash
+make clean
 make
 ```
 
-A futtatás:
-
-### Windows alatt
+Futtatás Windows alatt:
 
 ```bash
 mandelbrot.exe
 ```
 
-### Linux alatt
+## Fontos megjegyzés
 
-```bash
-./mandelbrot.exe
-```
+A projekt a `c_sdk_220203` csomagban található MinGW fordítóra épül. Más telepített toolchainnel, például MSYS2 / UCRT64 környezetben, header- és könyvtárütközés fordulhat elő.
 
 ## Jelenlegi állapot
 
-A projekt első lépése egy stabil OpenCL inicializáló váz elkészítése.
-
-A jelenlegi változat tartalmazza:
+A jelenlegi verzió tartalmazza:
 
 - OpenCL platformok felismerését
 - GPU kiválasztását
@@ -168,10 +120,4 @@ A jelenlegi változat tartalmazza:
 - profiling engedélyezett command queue létrehozását
 - moduláris projektstruktúrát
 
-A Mandelbrot-számítás és a képgenerálás a következő fejlesztési lépésekben kerül megvalósításra.
-
-## Összegzés
-
-A projekt egy jól mérhető, jól dokumentálható OpenCL-alapú párhuzamosítási feladatot valósít meg.
-
-A Mandelbrot-halmaz generálása alkalmas arra, hogy bemutassa a GPU-s párhuzamos végrehajtás működését, és lehetőséget adjon különböző futási paraméterek hatásának vizsgálatára.
+A Mandelbrot-számítás és a képgenerálás a következő lépésekben készül el.

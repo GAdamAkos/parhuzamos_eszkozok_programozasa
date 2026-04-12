@@ -154,7 +154,7 @@ void print_device_info(cl_device_id device)
     printf("  Compute Units     : %u\n", compute_units);
     printf("  Max Clock (MHz)   : %u\n", clock_frequency);
     printf("  Global Memory (MB): %.2f\n", (double)global_mem_size / (1024.0 * 1024.0));
-    printf("  Max Work Group    : %zu\n", max_work_group_size);
+    printf("  Max Work Group    : %lu\n", (unsigned long)max_work_group_size);
 }
 
 cl_device_id select_best_gpu_device(void)
@@ -233,8 +233,8 @@ cl_device_id select_best_gpu_device(void)
 
             score = (cl_ulong)compute_units * (cl_ulong)clock_frequency + (global_mem_size / (1024ULL * 1024ULL));
 
-            printf("  Selection score   : %llu\n\n", (unsigned long long)score);
-
+            printf("  Selection score   : %lu\n\n", (unsigned long)score);
+            
             if (score > best_score) {
                 best_score = score;
                 best_device = devices[d];

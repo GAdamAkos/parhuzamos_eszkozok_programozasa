@@ -1,6 +1,6 @@
-CC = gcc
-CFLAGS = -Wall -Wextra -O2 -Iinclude
-LDFLAGS = -lOpenCL
+CC = ../../../MinGW/bin/gcc.exe
+CFLAGS = -Wall -Wextra -O2 -Iinclude -I../../../MinGW/include
+LDFLAGS = -L../../../MinGW/lib -lOpenCL
 
 TARGET = mandelbrot.exe
 SOURCES = src/main.c src/cl_utils.c src/kernel_loader.c
@@ -9,4 +9,4 @@ all:
 	$(CC) $(CFLAGS) $(SOURCES) -o $(TARGET) $(LDFLAGS)
 
 clean:
-	rm -f $(TARGET)
+	del /Q $(TARGET) 2>nul || true
