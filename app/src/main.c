@@ -18,6 +18,70 @@ static int read_positive_int(const char* prompt)
     return value;
 }
 
+static int file_exists(const char* path)
+{
+    FILE* file = fopen(path, "rb");
+    if (file != NULL) {
+        fclose(file);
+        return 1;
+    }
+    return 0;
+}
+
+static void build_unique_output_filename(
+    char* buffer,
+    size_t buffer_size,
+    int width,
+    int height,
+    int max_iterations
+)
+{
+    int suffix = 0;
+    int written;
+
+    written = snprintf(
+        buffer,
+        buffer_size,
+        "output/mandelbrot_%dx%d_iter%d.ppm",
+        width,
+        height,
+        max_iterations
+    );
+
+    if (written < 0 || (size_t)written >= buffer_size) {
+        fprintf(stderr, "Nem sikerult letrehozni a kimeneti fajlnevet.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (!file_exists(buffer)) {
+        return;
+    }
+
+    suffix = 1;
+    while (1) {
+        written = snprintf(
+            buffer,
+            buffer_size,
+            "output/mandelbrot_%dx%d_iter%d_%d.ppm",
+            width,
+            height,
+            max_iterations,
+            suffix
+        );
+
+        if (written < 0 || (size_t)written >= buffer_size) {
+            fprintf(stderr, "Nem sikerult letrehozni az egyedi kimeneti fajlnevet.\n");
+            exit(EXIT_FAILURE);
+        }
+
+        if (!file_exists(buffer)) {
+            return;
+        }
+
+        ++suffix;
+    }
+}
+
 int main(void)
 {
     int width;
@@ -153,10 +217,9 @@ int main(void)
     );
     check_cl_error(error_code, "clEnqueueReadBuffer");
 
-    snprintf(
+    build_unique_output_filename(
         output_filename,
         sizeof(output_filename),
-        "output/mandelbrot_%dx%d_iter%d.ppm",
         width,
         height,
         max_iterations
