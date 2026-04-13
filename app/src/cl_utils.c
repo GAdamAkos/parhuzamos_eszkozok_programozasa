@@ -95,6 +95,11 @@ static void get_device_string(cl_device_id device, cl_device_info param, char* b
     }
 }
 
+void get_device_name(cl_device_id device, char* buffer, size_t buffer_size)
+{
+    get_device_string(device, CL_DEVICE_NAME, buffer, buffer_size);
+}
+
 void print_platform_info(cl_platform_id platform)
 {
     char name[256];
@@ -158,6 +163,62 @@ void print_device_info(cl_device_id device)
     printf("  Max Work Group    : %lu\n", (unsigned long)max_work_group_size);
 }
 
+static cl_ulong calculate_device_score(cl_device_id device)
+{
+    cl_uint compute_units = 0;
+    cl_uint clock_frequency = 0;
+    cl_ulong global_mem_size = 0;
+    size_t max_work_group_size = 0;
+    cl_device_type device_type = 0;
+    cl_bool unified_memory = CL_FALSE;
+
+    cl_ulong score = 0;
+    cl_ulong compute_score = 0;
+    cl_ulong memory_score = 0;
+    cl_ulong work_group_score = 0;
+
+    check_cl_error(
+        clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(compute_units), &compute_units, NULL),
+        "clGetDeviceInfo(CL_DEVICE_MAX_COMPUTE_UNITS)"
+    );
+    check_cl_error(
+        clGetDeviceInfo(device, CL_DEVICE_MAX_CLOCK_FREQUENCY, sizeof(clock_frequency), &clock_frequency, NULL),
+        "clGetDeviceInfo(CL_DEVICE_MAX_CLOCK_FREQUENCY)"
+    );
+    check_cl_error(
+        clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(global_mem_size), &global_mem_size, NULL),
+        "clGetDeviceInfo(CL_DEVICE_GLOBAL_MEM_SIZE)"
+    );
+    check_cl_error(
+        clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(max_work_group_size), &max_work_group_size, NULL),
+        "clGetDeviceInfo(CL_DEVICE_MAX_WORK_GROUP_SIZE)"
+    );
+    check_cl_error(
+        clGetDeviceInfo(device, CL_DEVICE_TYPE, sizeof(device_type), &device_type, NULL),
+        "clGetDeviceInfo(CL_DEVICE_TYPE)"
+    );
+    check_cl_error(
+        clGetDeviceInfo(device, CL_DEVICE_HOST_UNIFIED_MEMORY, sizeof(unified_memory), &unified_memory, NULL),
+        "clGetDeviceInfo(CL_DEVICE_HOST_UNIFIED_MEMORY)"
+    );
+
+    compute_score = (cl_ulong)compute_units * (cl_ulong)clock_frequency * 100UL;
+    memory_score = (global_mem_size / (1024UL * 1024UL)) * 8UL;
+    work_group_score = (cl_ulong)max_work_group_size * 16UL;
+
+    score = compute_score + memory_score + work_group_score;
+
+    if ((device_type & CL_DEVICE_TYPE_GPU) != 0) {
+        score += 500000UL;
+    }
+
+    if (unified_memory == CL_FALSE) {
+        score += 750000UL;
+    }
+
+    return score;
+}
+
 cl_device_id select_best_gpu_device(void)
 {
     cl_int error_code;
@@ -212,28 +273,10 @@ cl_device_id select_best_gpu_device(void)
         check_cl_error(error_code, "clGetDeviceIDs(list)");
 
         for (cl_uint d = 0; d < device_count; ++d) {
-            cl_uint compute_units = 0;
-            cl_uint clock_frequency = 0;
-            cl_ulong global_mem_size = 0;
             cl_ulong score = 0;
 
             print_device_info(devices[d]);
-
-            check_cl_error(
-                clGetDeviceInfo(devices[d], CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(compute_units), &compute_units, NULL),
-                "clGetDeviceInfo(CL_DEVICE_MAX_COMPUTE_UNITS)"
-            );
-            check_cl_error(
-                clGetDeviceInfo(devices[d], CL_DEVICE_MAX_CLOCK_FREQUENCY, sizeof(clock_frequency), &clock_frequency, NULL),
-                "clGetDeviceInfo(CL_DEVICE_MAX_CLOCK_FREQUENCY)"
-            );
-            check_cl_error(
-                clGetDeviceInfo(devices[d], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(global_mem_size), &global_mem_size, NULL),
-                "clGetDeviceInfo(CL_DEVICE_GLOBAL_MEM_SIZE)"
-            );
-
-            score = (cl_ulong)compute_units * (cl_ulong)clock_frequency
-                  + (global_mem_size / (1024UL * 1024UL));
+            score = calculate_device_score(devices[d]);
 
             printf("  Selection score   : %lu\n\n", (unsigned long)score);
 
@@ -253,7 +296,6 @@ cl_device_id select_best_gpu_device(void)
         exit(EXIT_FAILURE);
     }
 
-    printf("Selected best available GPU device.\n\n");
     return best_device;
 }
 

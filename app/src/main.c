@@ -43,6 +43,8 @@ int main(void)
     char* kernel_source = NULL;
     double execution_time_ms = 0.0;
     int exit_status = EXIT_FAILURE;
+    char selected_device_name[256];
+    char output_filename[256];
 
     printf("=== Mandelbrot OpenCL Parameterek ===\n");
     width = read_positive_int("Kerem a szelesseget (pl. 1920): ");
@@ -53,6 +55,7 @@ int main(void)
     output_size = (size_t)pixel_count * sizeof(cl_int);
 
     device = select_best_gpu_device();
+    get_device_name(device, selected_device_name, sizeof(selected_device_name));
 
     context = clCreateContext(NULL, 1, &device, NULL, NULL, &error_code);
     check_cl_error(error_code, "clCreateContext");
@@ -150,13 +153,24 @@ int main(void)
     );
     check_cl_error(error_code, "clEnqueueReadBuffer");
 
+    snprintf(
+        output_filename,
+        sizeof(output_filename),
+        "output/mandelbrot_%dx%d_iter%d.ppm",
+        width,
+        height,
+        max_iterations
+    );
+
     printf("\n--- Eredmenyek ---\n");
+    printf("Selected GPU: %s\n", selected_device_name);
     printf("Pixelek szama: %ld\n", pixel_count);
     printf("Felbontas: %d x %d\n", width, height);
     printf("Maximalis iteracioszam: %d\n", max_iterations);
-    printf("Futasi ido: %.4f ms\n", execution_time_ms);
+    printf("Kernel execution time: %.4f ms\n", execution_time_ms);
+    printf("Output file: %s\n", output_filename);
 
-    if (!save_ppm_image("output/mandelbrot.ppm", host_output, width, height, max_iterations)) {
+    if (!save_ppm_image(output_filename, host_output, width, height, max_iterations)) {
         fprintf(stderr, "Nem sikerult elmenteni a kimeneti kepet.\n");
         goto cleanup;
     }
