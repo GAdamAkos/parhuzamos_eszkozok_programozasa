@@ -7,17 +7,19 @@
 
 int main(void)
 {
-    const int Width = 1920;
-    const int M = 1080;
-    const int max_iterations = 1000;
-    
-    const float min_re = -2.0f;
-    const float max_re = 1.0f;
-    const float min_im = -1.2f;
-    const float max_im = 1.2f;
+    int Width, M, max_iterations;
 
-    const size_t element_count = (size_t)Width * (size_t)M;
-    const size_t output_size = element_count * sizeof(cl_int);
+    printf("=== Mandelbrot OpenCL Parameterek ===\n");
+    printf("Kerem a szelesseget (pl. 1920): ");
+    if (scanf("%d", &Width) != 1) return EXIT_FAILURE;
+    printf("Kerem a magassagot (M) (pl. 1080): ");
+    if (scanf("%d", &M) != 1) return EXIT_FAILURE;
+    printf("Kerem a maximalis iteracioszamot (pl. 1000): ");
+    if (scanf("%d", &max_iterations) != 1) return EXIT_FAILURE;
+
+    const long A = (long)Width * M;
+    const float min_re = -2.0f, max_re = 1.0f, min_im = -1.2f, max_im = 1.2f;
+    const size_t output_size = (size_t)A * sizeof(cl_int);
 
     cl_int error_code;
     cl_device_id device;
@@ -53,7 +55,6 @@ int main(void)
     clSetKernelArg(kernel, 7, sizeof(cl_int), &max_iterations);
 
     size_t global_work_size[2] = {(size_t)Width, (size_t)M};
-
     clEnqueueNDRangeKernel(command_queue, kernel, 2, NULL, global_work_size, NULL, 0, NULL, &kernel_event);
     clWaitForEvents(1, &kernel_event);
 
@@ -61,20 +62,17 @@ int main(void)
     clGetEventProfilingInfo(kernel_event, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &end_time, NULL);
     double execution_time = (double)(end_time - start_time) / 1000000.0;
 
-    clEnqueueReadBuffer(command_queue, output_buffer, CL_TRUE, 0, output_size, host_output, 0, NULL, NULL);
-
-    printf("Kernel execution time: %.4f ms\n", execution_time);
+    printf("\n--- Eredmenyek ---\n");
+    printf("Felszin (A): %ld pixel\n", A);
+    printf("Magassag (M): %d\n", M);
+    printf("Futasi ido: %.4f ms\n", execution_time);
 
     save_ppm_image("output/mandelbrot.ppm", host_output, Width, M, max_iterations);
 
-    free(host_output);
-    free(kernel_source);
-    clReleaseEvent(kernel_event);
-    clReleaseMemObject(output_buffer);
-    clReleaseKernel(kernel);
-    clReleaseProgram(program);
-    clReleaseCommandQueue(command_queue);
-    clReleaseContext(context);
+    free(host_output); free(kernel_source);
+    clReleaseEvent(kernel_event); clReleaseMemObject(output_buffer);
+    clReleaseKernel(kernel); clReleaseProgram(program);
+    clReleaseCommandQueue(command_queue); clReleaseContext(context);
 
     return 0;
 }
