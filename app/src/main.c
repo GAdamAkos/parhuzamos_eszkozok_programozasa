@@ -2,77 +2,189 @@
 #include <stdlib.h>
 
 #include "cl_utils.h"
-#include "kernel_loader.h"
 #include "image_writer.h"
+#include "kernel_loader.h"
+
+static int read_positive_int(const char* prompt)
+{
+    int value;
+
+    printf("%s", prompt);
+    if (scanf("%d", &value) != 1 || value <= 0) {
+        fprintf(stderr, "Hibas bemenet. Pozitiv egesz szam szukseges.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    return value;
+}
 
 int main(void)
 {
-    int Width, M, max_iterations;
+    int width;
+    int height;
+    int max_iterations;
+    long pixel_count;
+    size_t output_size;
 
-    printf("=== Mandelbrot OpenCL Parameterek ===\n");
-    printf("Kerem a szelesseget (pl. 1920): ");
-    if (scanf("%d", &Width) != 1) return EXIT_FAILURE;
-    printf("Kerem a magassagot (M) (pl. 1080): ");
-    if (scanf("%d", &M) != 1) return EXIT_FAILURE;
-    printf("Kerem a maximalis iteracioszamot (pl. 1000): ");
-    if (scanf("%d", &max_iterations) != 1) return EXIT_FAILURE;
+    const float min_re = -2.0f;
+    const float max_re = 1.0f;
+    const float min_im = -1.2f;
+    const float max_im = 1.2f;
 
-    const long A = (long)Width * M;
-    const float min_re = -2.0f, max_re = 1.0f, min_im = -1.2f, max_im = 1.2f;
-    const size_t output_size = (size_t)A * sizeof(cl_int);
-
-    cl_int error_code;
-    cl_device_id device;
-    cl_context context;
-    cl_command_queue command_queue;
-    cl_program program;
-    cl_kernel kernel;
+    cl_int error_code = CL_SUCCESS;
+    cl_device_id device = NULL;
+    cl_context context = NULL;
+    cl_command_queue command_queue = NULL;
+    cl_program program = NULL;
+    cl_kernel kernel = NULL;
     cl_mem output_buffer = NULL;
     cl_int* host_output = NULL;
-    cl_event kernel_event;
-    cl_ulong start_time, end_time;
+    cl_event kernel_event = NULL;
+    char* kernel_source = NULL;
+    double execution_time_ms = 0.0;
+    int exit_status = EXIT_FAILURE;
+
+    printf("=== Mandelbrot OpenCL Parameterek ===\n");
+    width = read_positive_int("Kerem a szelesseget (pl. 1920): ");
+    height = read_positive_int("Kerem a magassagot (pl. 1080): ");
+    max_iterations = read_positive_int("Kerem a maximalis iteracioszamot (pl. 1000): ");
+
+    pixel_count = (long)width * (long)height;
+    output_size = (size_t)pixel_count * sizeof(cl_int);
 
     device = select_best_gpu_device();
-    context = clCreateContext(NULL, 1, &device, NULL, NULL, &error_code);
-    command_queue = clCreateCommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE, &error_code);
 
-    char* kernel_source = load_kernel_source("kernels/mandelbrot.cl");
-    const char* kernel_source_ptr = kernel_source;
-    program = clCreateProgramWithSource(context, 1, &kernel_source_ptr, NULL, &error_code);
-    clBuildProgram(program, 1, &device, NULL, NULL, NULL);
+    context = clCreateContext(NULL, 1, &device, NULL, NULL, &error_code);
+    check_cl_error(error_code, "clCreateContext");
+
+    command_queue = clCreateCommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE, &error_code);
+    check_cl_error(error_code, "clCreateCommandQueue");
+
+    kernel_source = load_kernel_source("kernels/mandelbrot.cl");
+
+    {
+        const char* kernel_source_ptr = kernel_source;
+        program = clCreateProgramWithSource(context, 1, &kernel_source_ptr, NULL, &error_code);
+        check_cl_error(error_code, "clCreateProgramWithSource");
+    }
+
+    error_code = clBuildProgram(program, 1, &device, NULL, NULL, NULL);
+    if (error_code != CL_SUCCESS) {
+        print_program_build_log(program, device);
+        check_cl_error(error_code, "clBuildProgram");
+    }
 
     kernel = clCreateKernel(program, "mandelbrot_kernel", &error_code);
+    check_cl_error(error_code, "clCreateKernel");
+
     output_buffer = clCreateBuffer(context, CL_MEM_WRITE_ONLY, output_size, NULL, &error_code);
+    check_cl_error(error_code, "clCreateBuffer");
+
     host_output = (cl_int*)malloc(output_size);
+    if (host_output == NULL) {
+        fprintf(stderr, "Nem sikerult memoriat foglalni a host oldali kimenethez.\n");
+        goto cleanup;
+    }
 
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), &output_buffer);
-    clSetKernelArg(kernel, 1, sizeof(cl_int), &Width);
-    clSetKernelArg(kernel, 2, sizeof(cl_int), &M);
-    clSetKernelArg(kernel, 3, sizeof(cl_float), &min_re);
-    clSetKernelArg(kernel, 4, sizeof(cl_float), &max_re);
-    clSetKernelArg(kernel, 5, sizeof(cl_float), &min_im);
-    clSetKernelArg(kernel, 6, sizeof(cl_float), &max_im);
-    clSetKernelArg(kernel, 7, sizeof(cl_int), &max_iterations);
+    error_code = clSetKernelArg(kernel, 0, sizeof(cl_mem), &output_buffer);
+    check_cl_error(error_code, "clSetKernelArg(output_buffer)");
+    error_code = clSetKernelArg(kernel, 1, sizeof(cl_int), &width);
+    check_cl_error(error_code, "clSetKernelArg(width)");
+    error_code = clSetKernelArg(kernel, 2, sizeof(cl_int), &height);
+    check_cl_error(error_code, "clSetKernelArg(height)");
+    error_code = clSetKernelArg(kernel, 3, sizeof(cl_float), &min_re);
+    check_cl_error(error_code, "clSetKernelArg(min_re)");
+    error_code = clSetKernelArg(kernel, 4, sizeof(cl_float), &max_re);
+    check_cl_error(error_code, "clSetKernelArg(max_re)");
+    error_code = clSetKernelArg(kernel, 5, sizeof(cl_float), &min_im);
+    check_cl_error(error_code, "clSetKernelArg(min_im)");
+    error_code = clSetKernelArg(kernel, 6, sizeof(cl_float), &max_im);
+    check_cl_error(error_code, "clSetKernelArg(max_im)");
+    error_code = clSetKernelArg(kernel, 7, sizeof(cl_int), &max_iterations);
+    check_cl_error(error_code, "clSetKernelArg(max_iterations)");
 
-    size_t global_work_size[2] = {(size_t)Width, (size_t)M};
-    clEnqueueNDRangeKernel(command_queue, kernel, 2, NULL, global_work_size, NULL, 0, NULL, &kernel_event);
-    clWaitForEvents(1, &kernel_event);
+    {
+        size_t work_size[2] = {(size_t)width, (size_t)height};
+        error_code = clEnqueueNDRangeKernel(command_queue, kernel, 2, NULL, work_size, NULL, 0, NULL, &kernel_event);
+        check_cl_error(error_code, "clEnqueueNDRangeKernel");
+    }
 
-    clGetEventProfilingInfo(kernel_event, CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &start_time, NULL);
-    clGetEventProfilingInfo(kernel_event, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &end_time, NULL);
-    double execution_time = (double)(end_time - start_time) / 1000000.0;
+    error_code = clWaitForEvents(1, &kernel_event);
+    check_cl_error(error_code, "clWaitForEvents");
+
+    {
+        cl_ulong start_time = 0;
+        cl_ulong end_time = 0;
+
+        error_code = clGetEventProfilingInfo(
+            kernel_event,
+            CL_PROFILING_COMMAND_START,
+            sizeof(cl_ulong),
+            &start_time,
+            NULL
+        );
+        check_cl_error(error_code, "clGetEventProfilingInfo(START)");
+
+        error_code = clGetEventProfilingInfo(
+            kernel_event,
+            CL_PROFILING_COMMAND_END,
+            sizeof(cl_ulong),
+            &end_time,
+            NULL
+        );
+        check_cl_error(error_code, "clGetEventProfilingInfo(END)");
+
+        execution_time_ms = (double)(end_time - start_time) / 1000000.0;
+    }
+
+    error_code = clEnqueueReadBuffer(
+        command_queue,
+        output_buffer,
+        CL_TRUE,
+        0,
+        output_size,
+        host_output,
+        0,
+        NULL,
+        NULL
+    );
+    check_cl_error(error_code, "clEnqueueReadBuffer");
 
     printf("\n--- Eredmenyek ---\n");
-    printf("Felszin (A): %ld pixel\n", A);
-    printf("Magassag (M): %d\n", M);
-    printf("Futasi ido: %.4f ms\n", execution_time);
+    printf("Pixelek szama: %ld\n", pixel_count);
+    printf("Felbontas: %d x %d\n", width, height);
+    printf("Maximalis iteracioszam: %d\n", max_iterations);
+    printf("Futasi ido: %.4f ms\n", execution_time_ms);
 
-    save_ppm_image("output/mandelbrot.ppm", host_output, Width, M, max_iterations);
+    if (!save_ppm_image("output/mandelbrot.ppm", host_output, width, height, max_iterations)) {
+        fprintf(stderr, "Nem sikerult elmenteni a kimeneti kepet.\n");
+        goto cleanup;
+    }
 
-    free(host_output); free(kernel_source);
-    clReleaseEvent(kernel_event); clReleaseMemObject(output_buffer);
-    clReleaseKernel(kernel); clReleaseProgram(program);
-    clReleaseCommandQueue(command_queue); clReleaseContext(context);
+    exit_status = EXIT_SUCCESS;
 
-    return 0;
+cleanup:
+    free(host_output);
+    free(kernel_source);
+
+    if (kernel_event != NULL) {
+        clReleaseEvent(kernel_event);
+    }
+    if (output_buffer != NULL) {
+        clReleaseMemObject(output_buffer);
+    }
+    if (kernel != NULL) {
+        clReleaseKernel(kernel);
+    }
+    if (program != NULL) {
+        clReleaseProgram(program);
+    }
+    if (command_queue != NULL) {
+        clReleaseCommandQueue(command_queue);
+    }
+    if (context != NULL) {
+        clReleaseContext(context);
+    }
+
+    return exit_status;
 }
