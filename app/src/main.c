@@ -1,3 +1,4 @@
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -37,9 +38,7 @@ static void build_unique_output_filename(
 )
 {
     int suffix = 0;
-    int written;
-
-    written = snprintf(
+    int written = snprintf(
         buffer,
         buffer_size,
         "output/mandelbrot_%dx%d_iter%d.ppm",
@@ -82,12 +81,81 @@ static void build_unique_output_filename(
     }
 }
 
+static size_t calculate_output_size_or_exit(int width, int height)
+{
+    size_t pixel_count;
+
+    if (width <= 0 || height <= 0) {
+        fprintf(stderr, "A kep merete ervenytelen.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if ((size_t)width > SIZE_MAX / (size_t)height) {
+        fprintf(stderr, "A megadott kepmeret tul nagy.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    pixel_count = (size_t)width * (size_t)height;
+
+    if (pixel_count > SIZE_MAX / sizeof(cl_int)) {
+        fprintf(stderr, "A szukseges puffermeret tul nagy.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    return pixel_count * sizeof(cl_int);
+}
+
+static void validate_output_size_for_device(cl_device_id device, size_t output_size)
+{
+    cl_int error_code;
+    cl_ulong global_mem_size = 0;
+    cl_ulong max_mem_alloc_size = 0;
+
+    error_code = clGetDeviceInfo(
+        device,
+        CL_DEVICE_GLOBAL_MEM_SIZE,
+        sizeof(global_mem_size),
+        &global_mem_size,
+        NULL
+    );
+    check_cl_error(error_code, "clGetDeviceInfo(CL_DEVICE_GLOBAL_MEM_SIZE)");
+
+    error_code = clGetDeviceInfo(
+        device,
+        CL_DEVICE_MAX_MEM_ALLOC_SIZE,
+        sizeof(max_mem_alloc_size),
+        &max_mem_alloc_size,
+        NULL
+    );
+    check_cl_error(error_code, "clGetDeviceInfo(CL_DEVICE_MAX_MEM_ALLOC_SIZE)");
+
+    if ((cl_ulong)output_size > max_mem_alloc_size) {
+        fprintf(
+            stderr,
+            "A kert kep tul nagy: a szukseges puffermeret (%lu byte) meghaladja a GPU maximalis egyben foglalhato puffermeretet (%lu byte).\n",
+            (unsigned long)output_size,
+            (unsigned long)max_mem_alloc_size
+        );
+        exit(EXIT_FAILURE);
+    }
+
+    if ((cl_ulong)output_size > global_mem_size) {
+        fprintf(
+            stderr,
+            "A kert kep tul nagy: a szukseges puffermeret (%lu byte) meghaladja a GPU globalis memoriajat (%lu byte).\n",
+            (unsigned long)output_size,
+            (unsigned long)global_mem_size
+        );
+        exit(EXIT_FAILURE);
+    }
+}
+
 int main(void)
 {
     int width;
     int height;
     int max_iterations;
-    long pixel_count;
+    size_t pixel_count;
     size_t output_size;
 
     const float min_re = -2.0f;
@@ -115,11 +183,12 @@ int main(void)
     height = read_positive_int("Kerem a magassagot (pl. 1080): ");
     max_iterations = read_positive_int("Kerem a maximalis iteracioszamot (pl. 1000): ");
 
-    pixel_count = (long)width * (long)height;
-    output_size = (size_t)pixel_count * sizeof(cl_int);
+    output_size = calculate_output_size_or_exit(width, height);
+    pixel_count = output_size / sizeof(cl_int);
 
     device = select_best_gpu_device();
     get_device_name(device, selected_device_name, sizeof(selected_device_name));
+    validate_output_size_for_device(device, output_size);
 
     context = clCreateContext(NULL, 1, &device, NULL, NULL, &error_code);
     check_cl_error(error_code, "clCreateContext");
@@ -227,7 +296,7 @@ int main(void)
 
     printf("\n--- Eredmenyek ---\n");
     printf("Selected GPU: %s\n", selected_device_name);
-    printf("Pixelek szama: %ld\n", pixel_count);
+    printf("Pixelek szama: %lu\n", (unsigned long)pixel_count);
     printf("Felbontas: %d x %d\n", width, height);
     printf("Maximalis iteracioszam: %d\n", max_iterations);
     printf("Kernel execution time: %.4f ms\n", execution_time_ms);
