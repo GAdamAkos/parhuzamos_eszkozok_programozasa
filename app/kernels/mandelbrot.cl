@@ -1,16 +1,22 @@
-__kernel void mandelbrot_kernel(__global int* output, const int Width, const int M)
+__kernel void mandelbrot_kernel(
+    __global int* output, 
+    const int Width, 
+    const int M, 
+    const float min_re, 
+    const float max_re, 
+    const float min_im, 
+    const float max_im, 
+    const int max_iter)
 {
     int x = get_global_id(0);
     int y = get_global_id(1);
-    int index;
 
-    float min_real = -2.0f;
-    float max_real = 1.0f;
-    float min_imag = -1.2f;
-    float max_imag = 1.2f;
+    if (x >= Width || y >= M) {
+        return;
+    }
 
-    float real;
-    float imag;
+    float real = min_re + ((float)x / (float)(Width - 1)) * (max_re - min_re);
+    float imag = max_im - ((float)y / (float)(M - 1)) * (max_im - min_im);
 
     float zr = 0.0f;
     float zi = 0.0f;
@@ -18,26 +24,13 @@ __kernel void mandelbrot_kernel(__global int* output, const int Width, const int
     float zi2 = 0.0f;
 
     int iteration = 0;
-    int max_iterations = 1000;
-
-    if (x >= Width || y >= M) {
-        return;
-    }
-
-    index = y * Width + x;
-
-    real = min_real + ((float)x / (float)(Width - 1)) * (max_real - min_real);
-    imag = max_imag - ((float)y / (float)(M - 1)) * (max_imag - min_imag);
-
-    while ((zr2 + zi2 <= 4.0f) && (iteration < max_iterations)) {
+    while ((zr2 + zi2 <= 4.0f) && (iteration < max_iter)) {
         zi = 2.0f * zr * zi + imag;
         zr = zr2 - zi2 + real;
-
         zr2 = zr * zr;
         zi2 = zi * zi;
-
         iteration++;
     }
 
-    output[index] = iteration;
+    output[y * Width + x] = iteration;
 }

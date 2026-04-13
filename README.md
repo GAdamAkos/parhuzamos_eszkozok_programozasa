@@ -109,15 +109,3 @@ mandelbrot.exe
 ## Fontos megjegyzés
 
 A projekt a `c_sdk_220203` csomagban található MinGW fordítóra épül. Más telepített toolchainnel, például MSYS2 / UCRT64 környezetben, header- és könyvtárütközés fordulhat elő.
-
-## Jelenlegi állapot
-
-A jelenlegi verzió tartalmazza:
-
-- OpenCL platformok felismerését
-- GPU kiválasztását
-- context létrehozását
-- profiling engedélyezett command queue létrehozását
-- moduláris projektstruktúrát
-
-A Mandelbrot-számítás és a képgenerálás a következő lépésekben készül el.
