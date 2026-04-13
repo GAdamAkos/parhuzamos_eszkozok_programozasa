@@ -1,6 +1,4 @@
 # === Fordítás során keletkező fájlok ===
-# Az összes kiterjesztés nélküli fájl (Linux/macOS futtathatók)
-# Ha konkrét neveid vannak, azokat is beírhatod:
 info
 hello
 vector_add
