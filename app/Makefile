@@ -1,3 +1,4 @@
+# MinGW fordító és OpenCL útvonalak.
 CC = ../../../MinGW/bin/gcc.exe
 CFLAGS = -Wall -Wextra -O2 -Iinclude -I../../../MinGW/include
 LDFLAGS = -L../../../MinGW/lib -lOpenCL

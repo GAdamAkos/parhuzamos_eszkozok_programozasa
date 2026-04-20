@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* OpenCL hibakódok szöveges megjelenítéshez. */
 const char* cl_error_to_string(cl_int error_code)
 {
     switch (error_code) {
@@ -56,6 +57,7 @@ const char* cl_error_to_string(cl_int error_code)
     }
 }
 
+/* Központi OpenCL hibakezelés. */
 void check_cl_error(cl_int error_code, const char* operation)
 {
     if (error_code != CL_SUCCESS) {
@@ -65,6 +67,7 @@ void check_cl_error(cl_int error_code, const char* operation)
     }
 }
 
+/* Platformhoz tartozó szöveges mező lekérése. */
 static void get_platform_string(cl_platform_id platform, cl_platform_info param, char* buffer, size_t buffer_size)
 {
     cl_int error_code;
@@ -80,6 +83,7 @@ static void get_platform_string(cl_platform_id platform, cl_platform_info param,
     }
 }
 
+/* Eszközhöz tartozó szöveges mező lekérése. */
 static void get_device_string(cl_device_id device, cl_device_info param, char* buffer, size_t buffer_size)
 {
     cl_int error_code;
@@ -100,6 +104,7 @@ void get_device_name(cl_device_id device, char* buffer, size_t buffer_size)
     get_device_string(device, CL_DEVICE_NAME, buffer, buffer_size);
 }
 
+/* Platformadatok diagnosztikai kiírása. */
 void print_platform_info(cl_platform_id platform)
 {
     char name[256];
@@ -116,6 +121,7 @@ void print_platform_info(cl_platform_id platform)
     printf("  Version: %s\n", version);
 }
 
+/* Eszközadatok diagnosztikai kiírása. */
 void print_device_info(cl_device_id device)
 {
     char name[256];
@@ -163,6 +169,7 @@ void print_device_info(cl_device_id device)
     printf("  Max Work Group    : %lu\n", (unsigned long)max_work_group_size);
 }
 
+/* Egyszerű heurisztika az automatikus GPU-választáshoz. */
 static cl_ulong calculate_device_score(cl_device_id device)
 {
     cl_uint compute_units = 0;
@@ -202,94 +209,71 @@ static cl_ulong calculate_device_score(cl_device_id device)
         "clGetDeviceInfo(CL_DEVICE_HOST_UNIFIED_MEMORY)"
     );
 
-    compute_score = (cl_ulong)compute_units * (cl_ulong)clock_frequency * 100UL;
-    memory_score = (global_mem_size / (1024UL * 1024UL)) * 8UL;
-    work_group_score = (cl_ulong)max_work_group_size * 16UL;
+    compute_score = (cl_ulong)compute_units * (cl_ulong)clock_frequency;
+    memory_score = global_mem_size / (1024ULL * 1024ULL);
+    work_group_score = (cl_ulong)max_work_group_size;
 
-    score = compute_score + memory_score + work_group_score;
+    score += compute_score * 1000ULL;
+    score += memory_score * 10ULL;
+    score += work_group_score;
 
-    if ((device_type & CL_DEVICE_TYPE_GPU) != 0) {
-        score += 500000UL;
+    if (device_type & CL_DEVICE_TYPE_GPU) {
+        score += 1000000000ULL;
     }
 
     if (unified_memory == CL_FALSE) {
-        score += 750000UL;
+        score += 10000000ULL;
     }
 
     return score;
 }
 
+/* A legjobb elérhető GPU kiválasztása az összes platformról. */
 cl_device_id select_best_gpu_device(void)
 {
     cl_int error_code;
     cl_uint platform_count = 0;
-    cl_platform_id* platforms = NULL;
-
+    cl_platform_id platforms[16];
     cl_device_id best_device = NULL;
     cl_ulong best_score = 0;
 
-    error_code = clGetPlatformIDs(0, NULL, &platform_count);
-    check_cl_error(error_code, "clGetPlatformIDs(count)");
+    error_code = clGetPlatformIDs(16, platforms, &platform_count);
+    check_cl_error(error_code, "clGetPlatformIDs");
 
     if (platform_count == 0) {
         fprintf(stderr, "No OpenCL platforms found.\n");
         exit(EXIT_FAILURE);
     }
 
-    platforms = (cl_platform_id*)malloc(platform_count * sizeof(cl_platform_id));
-    if (platforms == NULL) {
-        fprintf(stderr, "Host memory allocation failed for platform list.\n");
-        exit(EXIT_FAILURE);
-    }
-
-    error_code = clGetPlatformIDs(platform_count, platforms, NULL);
-    check_cl_error(error_code, "clGetPlatformIDs(list)");
-
     printf("Detected %u OpenCL platform(s).\n\n", platform_count);
 
-    for (cl_uint p = 0; p < platform_count; ++p) {
+    for (cl_uint platform_index = 0; platform_index < platform_count; ++platform_index) {
+        cl_platform_id platform = platforms[platform_index];
+        cl_device_id devices[16];
         cl_uint device_count = 0;
-        cl_device_id* devices = NULL;
-        cl_int device_error;
 
-        print_platform_info(platforms[p]);
+        print_platform_info(platform);
 
-        device_error = clGetDeviceIDs(platforms[p], CL_DEVICE_TYPE_GPU, 0, NULL, &device_count);
-
-        if (device_error == CL_DEVICE_NOT_FOUND || device_count == 0) {
+        error_code = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 16, devices, &device_count);
+        if (error_code == CL_DEVICE_NOT_FOUND) {
             printf("  No GPU devices found on this platform.\n\n");
             continue;
         }
-        check_cl_error(device_error, "clGetDeviceIDs(count)");
+        check_cl_error(error_code, "clGetDeviceIDs(CL_DEVICE_TYPE_GPU)");
 
-        devices = (cl_device_id*)malloc(device_count * sizeof(cl_device_id));
-        if (devices == NULL) {
-            fprintf(stderr, "Host memory allocation failed for device list.\n");
-            free(platforms);
-            exit(EXIT_FAILURE);
-        }
+        for (cl_uint device_index = 0; device_index < device_count; ++device_index) {
+            cl_device_id device = devices[device_index];
+            cl_ulong score = calculate_device_score(device);
 
-        error_code = clGetDeviceIDs(platforms[p], CL_DEVICE_TYPE_GPU, device_count, devices, NULL);
-        check_cl_error(error_code, "clGetDeviceIDs(list)");
+            print_device_info(device);
+            printf("  Score             : %I64u\n\n", (unsigned long long)score);
 
-        for (cl_uint d = 0; d < device_count; ++d) {
-            cl_ulong score = 0;
-
-            print_device_info(devices[d]);
-            score = calculate_device_score(devices[d]);
-
-            printf("  Selection score   : %lu\n\n", (unsigned long)score);
-
-            if (score > best_score) {
+            if (best_device == NULL || score > best_score) {
+                best_device = device;
                 best_score = score;
-                best_device = devices[d];
             }
         }
-
-        free(devices);
     }
-
-    free(platforms);
 
     if (best_device == NULL) {
         fprintf(stderr, "No suitable GPU device found.\n");
@@ -299,28 +283,32 @@ cl_device_id select_best_gpu_device(void)
     return best_device;
 }
 
+/* Fordítási napló kiírása kernel build hiba esetén. */
 void print_program_build_log(cl_program program, cl_device_id device)
 {
     cl_int error_code;
     size_t log_size = 0;
-    char* build_log = NULL;
+    char* log_buffer = NULL;
 
     error_code = clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
     check_cl_error(error_code, "clGetProgramBuildInfo(size)");
 
-    build_log = (char*)malloc(log_size + 1);
-    if (build_log == NULL) {
-        fprintf(stderr, "Failed to allocate memory for build log.\n");
-        exit(EXIT_FAILURE);
+    if (log_size == 0) {
+        fprintf(stderr, "No build log available.\n");
+        return;
     }
 
-    error_code = clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, log_size, build_log, NULL);
+    log_buffer = (char*)malloc(log_size + 1);
+    if (log_buffer == NULL) {
+        fprintf(stderr, "Failed to allocate memory for build log.\n");
+        return;
+    }
+
+    error_code = clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, log_size, log_buffer, NULL);
     check_cl_error(error_code, "clGetProgramBuildInfo(log)");
 
-    build_log[log_size] = '\0';
+    log_buffer[log_size] = '\0';
+    fprintf(stderr, "\n=== OpenCL Build Log ===\n%s\n", log_buffer);
 
-    printf("=== OpenCL Build Log ===\n");
-    printf("%s\n", build_log);
-
-    free(build_log);
+    free(log_buffer);
 }

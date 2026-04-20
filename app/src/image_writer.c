@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stdio.h>
 
+/* RGB komponens korlátozása 0..255 tartományra. */
 static unsigned char clamp_to_byte(double value)
 {
     if (value < 0.0) {
@@ -14,6 +15,7 @@ static unsigned char clamp_to_byte(double value)
     return (unsigned char)(value + 0.5);
 }
 
+/* Iterációszámok mentése bináris PPM képként. */
 int save_ppm_image(const char* path, const int* data, int Width, int M, int max_iterations)
 {
     FILE* file;
@@ -23,7 +25,7 @@ int save_ppm_image(const char* path, const int* data, int Width, int M, int max_
     file = fopen(path, "wb");
     if (file == NULL) {
         fprintf(stderr, "Failed to open output image file: %s\n", path);
-        return 0;
+        return -1;
     }
 
     fprintf(file, "P6\n%d %d\n255\n", Width, M);
@@ -39,6 +41,7 @@ int save_ppm_image(const char* path, const int* data, int Width, int M, int max_
                 color[1] = 0;
                 color[2] = 0;
             } else {
+                /* Normalizált iterációszám a színképlethez. */
                 double t = (double)value / (double)max_iterations;
                 double r = 9.0 * (1.0 - t) * t * t * t * 255.0;
                 double g = 15.0 * (1.0 - t) * (1.0 - t) * t * t * 255.0;
@@ -49,10 +52,18 @@ int save_ppm_image(const char* path, const int* data, int Width, int M, int max_
                 color[2] = clamp_to_byte(b);
             }
 
-            fwrite(color, sizeof(unsigned char), 3, file);
+            if (fwrite(color, 1, 3, file) != 3) {
+                fclose(file);
+                fprintf(stderr, "Failed to write pixel data to output image file: %s\n", path);
+                return -1;
+            }
         }
     }
 
-    fclose(file);
-    return 1;
+    if (fclose(file) != 0) {
+        fprintf(stderr, "Failed to close output image file: %s\n", path);
+        return -1;
+    }
+
+    return 0;
 }

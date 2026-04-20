@@ -6,6 +6,7 @@
 #include "image_writer.h"
 #include "kernel_loader.h"
 
+/* Pozitív egész szám bekérése a futási paraméterekhez. */
 static int read_positive_int(const char* prompt)
 {
     int value;
@@ -19,6 +20,7 @@ static int read_positive_int(const char* prompt)
     return value;
 }
 
+/* Egyszerű fájllétezés-ellenőrzés a kimeneti név generálásához. */
 static int file_exists(const char* path)
 {
     FILE* file = fopen(path, "rb");
@@ -29,6 +31,7 @@ static int file_exists(const char* path)
     return 0;
 }
 
+/* Egyedi kimeneti fájlnév készítése, hogy a korábbi futások megmaradjanak. */
 static void build_unique_output_filename(
     char* buffer,
     size_t buffer_size,
@@ -81,6 +84,7 @@ static void build_unique_output_filename(
     }
 }
 
+/* Kimeneti puffer méretének számítása túlcsordulás-ellenőrzéssel. */
 static size_t calculate_output_size_or_exit(int width, int height)
 {
     size_t pixel_count;
@@ -105,6 +109,7 @@ static size_t calculate_output_size_or_exit(int width, int height)
     return pixel_count * sizeof(cl_int);
 }
 
+/* GPU memóriahatárok ellenőrzése a pufferfoglalás előtt. */
 static void validate_output_size_for_device(cl_device_id device, size_t output_size)
 {
     cl_int error_code;
@@ -158,6 +163,7 @@ int main(void)
     size_t pixel_count;
     size_t output_size;
 
+    /* A komplex sík vizsgált tartománya. */
     const float min_re = -2.0f;
     const float max_re = 1.0f;
     const float min_im = -1.2f;
@@ -183,9 +189,11 @@ int main(void)
     height = read_positive_int("Kerem a magassagot (pl. 1080): ");
     max_iterations = read_positive_int("Kerem a maximalis iteracioszamot (pl. 1000): ");
 
+    /* A kernel pixelenként egy iterációszámot ír a kimeneti tömbbe. */
     output_size = calculate_output_size_or_exit(width, height);
     pixel_count = output_size / sizeof(cl_int);
 
+    /* Eszköz kiválasztása és a szükséges puffer méretének ellenőrzése. */
     device = select_best_gpu_device();
     get_device_name(device, selected_device_name, sizeof(selected_device_name));
     validate_output_size_for_device(device, output_size);
@@ -193,16 +201,18 @@ int main(void)
     context = clCreateContext(NULL, 1, &device, NULL, NULL, &error_code);
     check_cl_error(error_code, "clCreateContext");
 
+    /* Profiling engedélyezve a kernelidő méréséhez. */
     command_queue = clCreateCommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE, &error_code);
     check_cl_error(error_code, "clCreateCommandQueue");
 
     kernel_source = load_kernel_source("kernels/mandelbrot.cl");
-
-    {
-        const char* kernel_source_ptr = kernel_source;
-        program = clCreateProgramWithSource(context, 1, &kernel_source_ptr, NULL, &error_code);
-        check_cl_error(error_code, "clCreateProgramWithSource");
+    if (kernel_source == NULL) {
+        fprintf(stderr, "Nem sikerult betolteni a kernel forrasat.\n");
+        goto cleanup;
     }
+
+    program = clCreateProgramWithSource(context, 1, (const char**)&kernel_source, NULL, &error_code);
+    check_cl_error(error_code, "clCreateProgramWithSource");
 
     error_code = clBuildProgram(program, 1, &device, NULL, NULL, NULL);
     if (error_code != CL_SUCCESS) {
@@ -218,58 +228,54 @@ int main(void)
 
     host_output = (cl_int*)malloc(output_size);
     if (host_output == NULL) {
-        fprintf(stderr, "Nem sikerult memoriat foglalni a host oldali kimenethez.\n");
+        fprintf(stderr, "Failed to allocate host memory for output buffer.\n");
         goto cleanup;
     }
 
-    error_code = clSetKernelArg(kernel, 0, sizeof(cl_mem), &output_buffer);
-    check_cl_error(error_code, "clSetKernelArg(output_buffer)");
-    error_code = clSetKernelArg(kernel, 1, sizeof(cl_int), &width);
-    check_cl_error(error_code, "clSetKernelArg(width)");
-    error_code = clSetKernelArg(kernel, 2, sizeof(cl_int), &height);
-    check_cl_error(error_code, "clSetKernelArg(height)");
-    error_code = clSetKernelArg(kernel, 3, sizeof(cl_float), &min_re);
-    check_cl_error(error_code, "clSetKernelArg(min_re)");
-    error_code = clSetKernelArg(kernel, 4, sizeof(cl_float), &max_re);
-    check_cl_error(error_code, "clSetKernelArg(max_re)");
-    error_code = clSetKernelArg(kernel, 5, sizeof(cl_float), &min_im);
-    check_cl_error(error_code, "clSetKernelArg(min_im)");
-    error_code = clSetKernelArg(kernel, 6, sizeof(cl_float), &max_im);
-    check_cl_error(error_code, "clSetKernelArg(max_im)");
-    error_code = clSetKernelArg(kernel, 7, sizeof(cl_int), &max_iterations);
-    check_cl_error(error_code, "clSetKernelArg(max_iterations)");
+    /* A kernel argumentumsorrendje megegyezik a .cl fájl definíciójával. */
+    check_cl_error(clSetKernelArg(kernel, 0, sizeof(cl_mem), &output_buffer), "clSetKernelArg(0)");
+    check_cl_error(clSetKernelArg(kernel, 1, sizeof(int), &width), "clSetKernelArg(1)");
+    check_cl_error(clSetKernelArg(kernel, 2, sizeof(int), &height), "clSetKernelArg(2)");
+    check_cl_error(clSetKernelArg(kernel, 3, sizeof(float), &min_re), "clSetKernelArg(3)");
+    check_cl_error(clSetKernelArg(kernel, 4, sizeof(float), &max_re), "clSetKernelArg(4)");
+    check_cl_error(clSetKernelArg(kernel, 5, sizeof(float), &min_im), "clSetKernelArg(5)");
+    check_cl_error(clSetKernelArg(kernel, 6, sizeof(float), &max_im), "clSetKernelArg(6)");
+    check_cl_error(clSetKernelArg(kernel, 7, sizeof(int), &max_iterations), "clSetKernelArg(7)");
 
     {
         size_t work_size[2] = {(size_t)width, (size_t)height};
-        error_code = clEnqueueNDRangeKernel(command_queue, kernel, 2, NULL, work_size, NULL, 0, NULL, &kernel_event);
+
+        /* 2D NDRange: egy work-item egy pixel feldolgozását végzi. */
+        error_code = clEnqueueNDRangeKernel(
+            command_queue,
+            kernel,
+            2,
+            NULL,
+            work_size,
+            NULL,
+            0,
+            NULL,
+            &kernel_event
+        );
         check_cl_error(error_code, "clEnqueueNDRangeKernel");
     }
 
-    error_code = clWaitForEvents(1, &kernel_event);
-    check_cl_error(error_code, "clWaitForEvents");
+    check_cl_error(clWaitForEvents(1, &kernel_event), "clWaitForEvents");
 
     {
         cl_ulong start_time = 0;
         cl_ulong end_time = 0;
 
-        error_code = clGetEventProfilingInfo(
-            kernel_event,
-            CL_PROFILING_COMMAND_START,
-            sizeof(cl_ulong),
-            &start_time,
-            NULL
+        check_cl_error(
+            clGetEventProfilingInfo(kernel_event, CL_PROFILING_COMMAND_START, sizeof(start_time), &start_time, NULL),
+            "clGetEventProfilingInfo(START)"
         );
-        check_cl_error(error_code, "clGetEventProfilingInfo(START)");
-
-        error_code = clGetEventProfilingInfo(
-            kernel_event,
-            CL_PROFILING_COMMAND_END,
-            sizeof(cl_ulong),
-            &end_time,
-            NULL
+        check_cl_error(
+            clGetEventProfilingInfo(kernel_event, CL_PROFILING_COMMAND_END, sizeof(end_time), &end_time, NULL),
+            "clGetEventProfilingInfo(END)"
         );
-        check_cl_error(error_code, "clGetEventProfilingInfo(END)");
 
+        /* A kiírt idő a kernel végrehajtási ideje, ezredmásodpercben. */
         execution_time_ms = (double)(end_time - start_time) / 1000000.0;
     }
 
@@ -286,51 +292,31 @@ int main(void)
     );
     check_cl_error(error_code, "clEnqueueReadBuffer");
 
-    build_unique_output_filename(
-        output_filename,
-        sizeof(output_filename),
-        width,
-        height,
-        max_iterations
-    );
+    build_unique_output_filename(output_filename, sizeof(output_filename), width, height, max_iterations);
 
-    printf("\n--- Eredmenyek ---\n");
-    printf("Selected GPU: %s\n", selected_device_name);
-    printf("Pixelek szama: %lu\n", (unsigned long)pixel_count);
-    printf("Felbontas: %d x %d\n", width, height);
-    printf("Maximalis iteracioszam: %d\n", max_iterations);
-    printf("Kernel execution time: %.4f ms\n", execution_time_ms);
-    printf("Output file: %s\n", output_filename);
+    printf("\n=== Eredmeny ===\n");
+    printf("Selected device : %s\n", selected_device_name);
+    printf("Pixels          : %lu\n", (unsigned long)pixel_count);
+    printf("Resolution      : %dx%d\n", width, height);
+    printf("Max iterations  : %d\n", max_iterations);
+    printf("Kernel time     : %.3f ms\n", execution_time_ms);
+    printf("Output file     : %s\n", output_filename);
 
-    if (!save_ppm_image(output_filename, host_output, width, height, max_iterations)) {
-        fprintf(stderr, "Nem sikerult elmenteni a kimeneti kepet.\n");
+    if (save_ppm_image(output_filename, host_output, width, height, max_iterations) != 0) {
         goto cleanup;
     }
 
     exit_status = EXIT_SUCCESS;
 
 cleanup:
-    free(host_output);
-    free(kernel_source);
-
-    if (kernel_event != NULL) {
-        clReleaseEvent(kernel_event);
-    }
-    if (output_buffer != NULL) {
-        clReleaseMemObject(output_buffer);
-    }
-    if (kernel != NULL) {
-        clReleaseKernel(kernel);
-    }
-    if (program != NULL) {
-        clReleaseProgram(program);
-    }
-    if (command_queue != NULL) {
-        clReleaseCommandQueue(command_queue);
-    }
-    if (context != NULL) {
-        clReleaseContext(context);
-    }
+    if (host_output != NULL) free(host_output);
+    if (kernel_source != NULL) free(kernel_source);
+    if (kernel_event != NULL) clReleaseEvent(kernel_event);
+    if (output_buffer != NULL) clReleaseMemObject(output_buffer);
+    if (kernel != NULL) clReleaseKernel(kernel);
+    if (program != NULL) clReleaseProgram(program);
+    if (command_queue != NULL) clReleaseCommandQueue(command_queue);
+    if (context != NULL) clReleaseContext(context);
 
     return exit_status;
 }

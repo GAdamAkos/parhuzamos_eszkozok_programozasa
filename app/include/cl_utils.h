@@ -1,6 +1,7 @@
 #ifndef CL_UTILS_H
 #define CL_UTILS_H
 
+/* A projekt OpenCL 1.2 API-t használ. */
 #define CL_TARGET_OPENCL_VERSION 120
 #include <CL/cl.h>
 

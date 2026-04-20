@@ -3,13 +3,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/* Kernel forrásfájl teljes beolvasása memóriába. */
 char* load_kernel_source(const char* path)
 {
-    FILE* file = fopen(path, "rb");
-    char* source = NULL;
-    long file_size = 0;
-    size_t read_size = 0;
+    FILE* file;
+    long file_size;
+    size_t read_size;
+    char* source;
 
+    file = fopen(path, "rb");
     if (file == NULL) {
         fprintf(stderr, "Failed to open kernel source file: %s\n", path);
         return NULL;
@@ -17,18 +19,22 @@ char* load_kernel_source(const char* path)
 
     if (fseek(file, 0, SEEK_END) != 0) {
         fclose(file);
-        fprintf(stderr, "Failed to seek kernel source file: %s\n", path);
+        fprintf(stderr, "Failed to seek to end of kernel source file: %s\n", path);
         return NULL;
     }
 
     file_size = ftell(file);
     if (file_size < 0) {
         fclose(file);
-        fprintf(stderr, "Failed to determine kernel source file size: %s\n", path);
+        fprintf(stderr, "Failed to determine size of kernel source file: %s\n", path);
         return NULL;
     }
 
-    rewind(file);
+    if (fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        fprintf(stderr, "Failed to seek to start of kernel source file: %s\n", path);
+        return NULL;
+    }
 
     source = (char*)malloc((size_t)file_size + 1);
     if (source == NULL) {
